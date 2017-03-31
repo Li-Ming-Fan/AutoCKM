@@ -25,6 +25,7 @@ public:
 	//
 	int * NumDistributed;       // of length NumCenters
 	float * PositiveRatios;        // for pattern assessment, of length NumCenters
+	int * NearestInstances;       // of length NumCenters
 	//
 	int * ArrayClassifyings;     // of length NumSamples
 	//
@@ -41,6 +42,8 @@ public:
 	//
 	int MaxIter;
 	float loss_tol;
+	//
+	float loss;
 	//
 
 	//
@@ -60,6 +63,7 @@ public:
 		//
 		NumDistributed = new int[1];
 		PositiveRatios = new float[1];
+		NearestInstances = new int[1];
 		//
 
 		//
@@ -67,6 +71,8 @@ public:
 		//
 		MaxIter = 1000;
 		loss_tol = 0.0001;
+		//
+		loss = 100;
 		//
 
 	}
@@ -78,6 +84,7 @@ public:
 		delete [] ArraySilhouettes;
 		delete [] NumDistributed;
 		delete [] PositiveRatios;
+		delete [] NearestInstances;
 	}
 	//
 	void setNumCenters(int Num)
@@ -92,6 +99,9 @@ public:
 		//
 		delete [] PositiveRatios;
 		PositiveRatios = new float[NumCenters];
+		//
+		delete [] NearestInstances;
+		NearestInstances = new int[NumCenters];
 		//
 	}
 	void setMatSamples(FloatMat MatSamples)
@@ -121,6 +131,11 @@ public:
 		return NumFeatures;
 	}
 	//
+	void resetArrayPositiveRatios()
+	{
+		for (int c = 0; c < NumCenters; c++) PositiveRatios[c] = 0;
+	}
+	//
 
 	// interface functions
 	void display()
@@ -141,6 +156,13 @@ public:
 		for (int c = 0; c < NumCenters; c++)
 		{
 			printf("%.4f, ", PositiveRatios[c]);
+		}
+		printf("\n");
+		//
+		printf("NearestInstances: ");
+		for (int c = 0; c < NumCenters; c++)
+		{
+			printf("%d, ", NearestInstances[c]);
 		}
 		printf("\n");
 		//
@@ -230,7 +252,6 @@ public:
 					}
 				}
 				//
-
 			}
 			else if (strcmp(buff, "PositiveRatios") == 0)
 			{
@@ -259,8 +280,36 @@ public:
 						curr++;
 					}
 					//
-
 				}
+			}
+			else if (strcmp(buff, "NearestInstances") == 0)
+			{
+				//
+				int Posi = 0;
+				char * str_begin = buff + curr;
+				//
+				while (buff[curr] != '\n')
+				{
+					if (buff[curr] == ',')
+					{
+						buff[curr] = '\0';
+
+						sscanf(str_begin, "%d", NearestInstances + Posi);
+
+						//
+						Posi++;
+
+						//
+						curr++;
+
+						str_begin = buff + curr;
+					}
+					else
+					{
+						curr++;
+					}
+				}
+				//
 			}
 			else if (strcmp(buff, "Centers") == 0)
 			{
@@ -308,7 +357,14 @@ public:
 		}
 		fprintf(fp, "\n");
 		//
-		fprintf(fp, "Centers: ");
+		fprintf(fp, "NearestInstances: ");
+		for (int c = 0; c < NumCenters; c++)
+		{
+			fprintf(fp, "%d, ", NearestInstances[c]);
+		}
+		fprintf(fp, "\n");
+		//
+		fprintf(fp, "Centers: \n");
 		for (int c = 0; c < NumCenters; c++)
 		{
 			Centers[c].writeToFile(fp);
@@ -695,11 +751,14 @@ public:
 };
 
 // utility functions
-int FunctionClusteringCKM(CKM_Model & ckm, FloatMat Samples, int NumCenters);
+int FunctionClusteringCKM(CKM_Model & ckm);
+int FunctionClassifyingCKM(CKM_Model & ckm);
+//
 int FunctionSilhouetteCKM(CKM_Model & ckm);
 int FunctionValidatingCKM(CKM_Model & ckm, FloatMat Labels);
 //
-
+int FunctionNearestInstancesCKM(CKM_Model & ckm);
+//
 
 
 #endif

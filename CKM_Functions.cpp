@@ -22,7 +22,7 @@ void printStrToLogCKM(char * str)
 
 
 // utility functions
-int FunctionClusteringCKM(CKM_Model & ckm, FloatMat Samples, int NumCenters)
+int FunctionClusteringCKM(CKM_Model & ckm)
 {
 	//
 	int MaxIter = ckm.MaxIter;
@@ -32,15 +32,21 @@ int FunctionClusteringCKM(CKM_Model & ckm, FloatMat Samples, int NumCenters)
 	//
 
 	//
-	ckm.setNumCenters(NumCenters);    //
-	ckm.setMatSamples(Samples);          //
+	int NumCenters = ckm.getNumCenters();
 	//
 	int NumSamples, NumFeatures;
-	Samples.getMatSize(NumSamples, NumFeatures);
+	ckm.Samples.getMatSize(NumSamples, NumFeatures);
 	//
 	FloatMat * CentersReserved = new FloatMat[NumCenters];
 	//
 	float loss = 0;   //
+	//
+
+	// Centers, memory
+	for (int c = 0; c < NumCenters; c++)
+	{
+		ckm.Centers[c].setMatSize(1, NumFeatures);
+	}
 	//
 
 	//
@@ -75,10 +81,14 @@ int FunctionClusteringCKM(CKM_Model & ckm, FloatMat Samples, int NumCenters)
 
 			}// for c
 
+			//
+			printf("iter, %d, loss, %.6f, \n", iter, loss);
+			//
+
 			// criteria
 			if (loss < loss_tol)
 			{
-				printf("loss < loss_tol = %f.\n", loss_tol);
+				printf("loss < loss_tol = %.6f.\n", loss_tol);
 
 				break; // while iter
 			}
@@ -119,10 +129,14 @@ int FunctionClusteringCKM(CKM_Model & ckm, FloatMat Samples, int NumCenters)
 
 			}// for c
 
+			//
+			printf("iter, %d, loss, %.6f, \n", iter, loss);
+			//
+
 			// criteria
 			if (loss < loss_tol)
 			{
-				printf("loss < loss_tol = %f.\n", loss_tol);
+				printf("loss < loss_tol = %.6f.\n", loss_tol);
 
 				break; // while iter
 			}
@@ -141,6 +155,9 @@ int FunctionClusteringCKM(CKM_Model & ckm, FloatMat Samples, int NumCenters)
 		printf("Error, FlagCenterType %d NOT defined.\n", ckm.FlagCenterType);
 
 	}// if FlagCenterType
+	//
+	ckm.loss = loss;
+	//
 
 	//
 	delete [] CentersReserved;
@@ -174,7 +191,7 @@ int FunctionClassifyingCKM(CKM_Model & ckm)
 //
 int FunctionSilhouetteCKM(CKM_Model & ckm)
 {
-	// classified
+	// after classified
 
 	// calculate distances
 	int NumSamples, NumFeatures;
@@ -195,7 +212,7 @@ int FunctionSilhouetteCKM(CKM_Model & ckm)
 		{
 			distance_curr = distance_start;
 			//
-			data_inner = data_sample;
+			data_inner = ckm.Samples.data;
 			//
 			for (int s_inner = 0; s_inner < s; s_inner++, data_inner += NumFeatures, distance_curr++)
 			{
@@ -210,12 +227,13 @@ int FunctionSilhouetteCKM(CKM_Model & ckm)
 		{
 			distance_curr = distance_start;
 			//
-			data_inner = data_sample;
+			data_inner = ckm.Samples.data;
 			//
 			for (int s_inner = 0; s_inner < s; s_inner++, data_inner += NumFeatures, distance_curr++)
 			{
 				distance_curr[0] = ckm.distanceFunctionL2(data_sample, data_inner, NumFeatures);   // L2
 			}
+
 		}// for s
 	}
 	else
@@ -230,7 +248,9 @@ int FunctionSilhouetteCKM(CKM_Model & ckm)
 	float * SumDistances = new float[NumCenters];
 	//
 	int type;
-	float ad, min_ad_others;
+	float ad, min_ad_others;  // averaged distance
+	//
+	int NumForAverage = NumSamples;
 	//
 
 	// calculate silhouette
@@ -238,6 +258,18 @@ int FunctionSilhouetteCKM(CKM_Model & ckm)
 	//
 	for (int s = 0; s < NumSamples; s++, distance_start += NumSamples)
 	{
+		//
+		type = ckm.ArrayClassifyings[s];
+		//
+		// outlier points
+		if (ckm.NumDistributed[type] == 1)
+		{
+			NumForAverage--;
+
+			continue;
+		}
+
+		//
 		// initialize sum array
 		for (int c = 0; c < NumCenters; c++) SumDistances[c] = 0;
 
@@ -249,14 +281,16 @@ int FunctionSilhouetteCKM(CKM_Model & ckm)
 			SumDistances[ckm.ArrayClassifyings[s_inner]] += distance_curr[0];
 		}
 		//
-		for (int s_inner = s+1; s < NumSamples; s_inner++, distance_curr += NumSamples)
+		distance_curr += NumSamples;
+		//
+		for (int s_inner = s+1; s_inner < NumSamples; s_inner++, distance_curr += NumSamples)
 		{
 			SumDistances[ckm.ArrayClassifyings[s_inner]] += distance_curr[0];
 		}
 
 		// calculate silhouette
-		type = ckm.ArrayClassifyings[s];
 		//
+		// min_ad_others
 		min_ad_others = 100000000;
 		for (int c = 0; c < NumCenters; c++)
 		{
@@ -269,7 +303,7 @@ int FunctionSilhouetteCKM(CKM_Model & ckm)
 		}
 		//
 		// ad_same
-		ad = SumDistances[type] / ckm.NumDistributed[type];
+		ad = SumDistances[type] / (ckm.NumDistributed[type] - 1);
 		//
 		// silhouette
 		if (min_ad_others > ad)
@@ -285,11 +319,14 @@ int FunctionSilhouetteCKM(CKM_Model & ckm)
 
 	}// for s
 
-	//
+	// average
 	float sum = 0;
-	for (int s = 0; s < NumSamples; s++) sum += ckm.ArraySilhouettes[s];
+	for (int s = 0; s < NumSamples; s++)
+	{
+		sum += ckm.ArraySilhouettes[s];
+	}
 	//
-	ckm.AverageSilhouette = sum/NumSamples;
+	ckm.AverageSilhouette = sum/NumForAverage;
 	//
 
 	//
@@ -301,7 +338,7 @@ int FunctionSilhouetteCKM(CKM_Model & ckm)
 //
 int FunctionValidatingCKM(CKM_Model & ckm, FloatMat Labels)
 {
-	// classified
+	// after classified
 
 	// initialize
 	int NumCenters = ckm.getNumCenters();
@@ -337,8 +374,89 @@ int FunctionValidatingCKM(CKM_Model & ckm, FloatMat Labels)
 	return 0;
 }
 //
+int FunctionNearestInstancesCKM(CKM_Model & ckm)
+{
+	// after classified
 
+	//
+	int NumCenters = ckm.getNumCenters();
+	int NumSamples, NumFeatures;
+	ckm.Samples.getMatSize(NumSamples, NumFeatures);
+	//
+	float distance, distance_min;
+	float * data_sample;
+	float * data_center;
+	//
 
+	//
+	if (ckm.FlagCenterType == ckm.CKM_MEDOID)
+	{
+		printf("No Need to conduct NearestInstancesSearch for CenterType of MEDOID.\n");
+	}
+	if (ckm.FlagCenterType == ckm.CKM_MEDIAN)
+	{
+		//
+		for (int c = 0; c < NumCenters; c++)
+		{
+			data_center = ckm.Centers[c].data;
+			data_sample = ckm.Samples.data;
+			//
+			distance_min = 10000000;
+			//
+			for (int s = 0; s < NumSamples; s++, data_sample += NumFeatures)
+			{
+				if (ckm.ArrayClassifyings[s] == c)
+				{
+					distance = ckm.distanceFunctionL1(data_center, data_sample, NumFeatures);
+					//
+					if (distance < distance_min)
+					{
+						distance_min = distance;
+						ckm.NearestInstances[c] = s;
+					}
+				}
+
+			}// for s
+		}// for c
+
+	}
+	else if (ckm.FlagCenterType == ckm.CKM_MEAN)
+	{
+		//
+		for (int c = 0; c < NumCenters; c++)
+		{
+			data_center = ckm.Centers[c].data;
+			data_sample = ckm.Samples.data;
+			//
+			distance_min = 10000000;
+			//
+			for (int s = 0; s < NumSamples; s++, data_sample += NumFeatures)
+			{
+				if (ckm.ArrayClassifyings[s] == c)
+				{
+					distance = ckm.distanceFunctionL2(data_center, data_sample, NumFeatures);
+					//
+					if (distance < distance_min)
+					{
+						distance_min = distance;
+						ckm.NearestInstances[c] = s;
+					}
+				}
+
+			}// for s
+		}// for c
+	}
+	else
+	{
+		printf("Error, ckm.FlagCenterType %d NOT defined.\n", ckm.FlagCenterType);
+		//
+		return -1;
+	}
+
+	//
+	return 0;
+}
+//
 
 
 
